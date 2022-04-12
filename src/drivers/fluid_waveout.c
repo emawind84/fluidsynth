@@ -25,6 +25,7 @@
 
 #if WAVEOUT_SUPPORT
 
+#include <windows.h>
 #include <mmsystem.h>
 #include <mmreg.h>
 

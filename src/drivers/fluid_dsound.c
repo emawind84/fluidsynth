@@ -27,7 +27,7 @@
 
 #if DSOUND_SUPPORT
 
-
+#include <windows.h>
 #include <mmsystem.h>
 #include <dsound.h>
 #include <mmreg.h>
