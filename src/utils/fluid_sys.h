@@ -260,48 +260,12 @@ new_fluid_cond_mutex (void)
     return mutex;
 }
 
-/* Thread condition signaling */
-typedef GCond fluid_cond_t;
-fluid_cond_t *new_fluid_cond (void);
-#define delete_fluid_cond(cond)         g_cond_free(cond)
-#define fluid_cond_signal(cond)         g_cond_signal(cond)
-#define fluid_cond_broadcast(cond)      g_cond_broadcast(cond)
-#define fluid_cond_wait(cond, mutex)    g_cond_wait(cond, mutex)
-
-/* Thread private data */
-typedef GStaticPrivate fluid_private_t;
-#define fluid_private_get(_priv)                   g_static_private_get(&(_priv))
-#define fluid_private_set(_priv, _data)            g_static_private_set(&(_priv), _data, NULL)
-#define fluid_private_free(_priv)                  g_static_private_free(&(_priv))
-
-#define fluid_private_init(_priv)                  G_STMT_START { \
-  if (!g_thread_supported ()) g_thread_init (NULL); \
-  g_static_private_init (&(_priv)); \
-} G_STMT_END;
-
-#endif
-
-
-/* Atomic operations */
-
-#define fluid_atomic_int_inc(_pi) g_atomic_int_inc(_pi)
-#define fluid_atomic_int_get(_pi) g_atomic_int_get(_pi)
-#define fluid_atomic_int_set(_pi, _val) g_atomic_int_set(_pi, _val)
-#define fluid_atomic_int_dec_and_test(_pi) g_atomic_int_dec_and_test(_pi)
-#define fluid_atomic_int_compare_and_exchange(_pi, _old, _new) \
-  g_atomic_int_compare_and_exchange(_pi, _old, _new)
-
-#if GLIB_MAJOR_VERSION > 2 || (GLIB_MAJOR_VERSION == 2 && GLIB_MINOR_VERSION >= 30)
-#define fluid_atomic_int_exchange_and_add(_pi, _add) \
-  g_atomic_int_add(_pi, _add)
-#define fluid_atomic_int_add(_pi, _add) \
-  g_atomic_int_add(_pi, _add)
-#else
-#define fluid_atomic_int_exchange_and_add(_pi, _add) \
-  g_atomic_int_exchange_and_add(_pi, _add)
-#define fluid_atomic_int_add(_pi, _add) \
-  g_atomic_int_exchange_and_add(_pi, _add)
-#endif
+static FLUID_INLINE void
+delete_fluid_cond_mutex (fluid_cond_mutex_t *m)
+{
+    fluid_cond_mutex_destroy(m);
+    free(m);
+}
 
 /* Thread condition signaling */
 typedef CONDITION_VARIABLE fluid_cond_t;
