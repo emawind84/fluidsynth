@@ -18,21 +18,13 @@
  * 02110-1301, USA
  */
 
+#if defined(_WIN32)
+#include <io.h>
+#elif defined(__APPLE__)
+#include "apple/timing_mach.h"
+#endif
+
 #include "fluid_sys.h"
-
-
-#if WITH_READLINE
-#include <readline/readline.h>
-#include <readline/history.h>
-#endif
-
-#ifdef DBUS_SUPPORT
-#include "fluid_rtkit.h"
-#endif
-
-/* WIN32 HACK - Flag used to differentiate between a file descriptor and a socket.
- * Should work, so long as no SOCKET or file descriptor ends up with this bit set. - JG */
-#define WIN32_SOCKET_FLAG       0x40000000
 
 /* SCHED_FIFO priority for high priority timer threads */
 #define FLUID_SYS_TIMER_HIGH_PRIO_LEVEL         10
@@ -53,15 +45,6 @@ struct _fluid_timer_t
   fluid_thread_t *thread;
   int cont;
   int auto_destroy;
-};
-
-struct _fluid_server_socket_t
-{
-  fluid_socket_t socket;
-  fluid_thread_t *thread;
-  int cont;
-  fluid_server_func_t func;
-  void *data;
 };
 
 
@@ -369,17 +352,41 @@ fluid_is_soundfont(const char *filename)
  */
 unsigned int fluid_curtime(void)
 {
-  static glong initial_seconds = 0;
-  GTimeVal timeval;
+    static long initial_seconds = 0;
+#ifdef _WIN32
+    UINT64 time;
+    FILETIME ft;
 
-  if (initial_seconds == 0) {
-    g_get_current_time (&timeval);
-    initial_seconds = timeval.tv_sec;
-  }
+    if (initial_seconds == 0) {
+        GetSystemTimeAsFileTime(&ft);
+        time = ft.dwHighDateTime;
+        time <<= 32ULL;
+        time |= ft.dwLowDateTime;
+        time /= 10000000; // time is 100ns, convert to seconds
+        time -= 11644473600LL; // Seconds between Windows epoch (1601/01/01) and Unix
+        initial_seconds = time;
+    }
 
-  g_get_current_time (&timeval);
+    GetSystemTimeAsFileTime(&ft);
+    time = ft.dwHighDateTime;
+    time <<= 32ULL;
+    time |= ft.dwLowDateTime;
+    time /= 10000; // time is 100ns, convert to ms
+    time -= 11644473600000LL; // Milliseconds between Windows epoch (1601/01/01) and Unix
 
-  return (unsigned int)((timeval.tv_sec - initial_seconds) * 1000.0 + timeval.tv_usec / 1000.0);
+    return time - initial_seconds * 1000;
+#else
+    struct timespec timeval;
+
+    if (initial_seconds == 0) {
+        clock_gettime(CLOCK_REALTIME, &timeval);
+        initial_seconds = timeval.tv_sec;
+    }
+
+    clock_gettime(CLOCK_REALTIME, &timeval);
+
+    return (unsigned int)((timeval.tv_sec - initial_seconds) * 1000.0 + timeval.tv_nsec / 1000000.0);
+#endif
 }
 
 /**
@@ -389,11 +396,25 @@ unsigned int fluid_curtime(void)
 double
 fluid_utime (void)
 {
-  GTimeVal timeval;
+#ifdef _WIN32
+    FILETIME ft;
+    UINT64 time;
 
-  g_get_current_time (&timeval);
+    GetSystemTimeAsFileTime(&ft);
+    time = ft.dwHighDateTime;
+    time <<= 32ULL;
+    time |= ft.dwLowDateTime;
+    time /= 10; // time is 100ns, convert to us
+    time -= 11644473600000000ULL; // Microseconds between Windows epoch (1601/01/01) and Unix
 
-  return (timeval.tv_sec * 1000000.0 + timeval.tv_usec);
+    return time / 1000000.0;
+#else
+    struct timespec timeval;
+
+    clock_gettime(CLOCK_REALTIME, &timeval);
+
+    return (timeval.tv_sec * 1000000.0 + timeval.tv_nsec / 1000.0);
+#endif
 }
 
 
@@ -584,8 +605,8 @@ new_fluid_cond (void)
 
 #endif
 
-static gpointer
-fluid_thread_high_prio (gpointer data)
+static FLUID_THREAD_RETURN_TYPE
+fluid_thread_high_prio (void *data)
 {
   fluid_thread_info_t *info = data;
 
@@ -594,7 +615,7 @@ fluid_thread_high_prio (gpointer data)
   info->func (info->data);
   FLUID_FREE (info);
 
-  return NULL;
+  return FLUID_THREAD_RETURN_VALUE;
 }
 
 /**
@@ -609,57 +630,47 @@ fluid_thread_high_prio (gpointer data)
 fluid_thread_t *
 new_fluid_thread (const char *name, fluid_thread_func_t func, void *data, int prio_level, int detach)
 {
-  GThread *thread;
-  fluid_thread_info_t *info;
-  GError *err = NULL;
+    fluid_thread_t *thread;
+    fluid_thread_info_t *info;
 
-  g_return_val_if_fail (func != NULL, NULL);
+    fluid_return_val_if_fail (func != NULL, NULL);
 
-#if OLD_GLIB_THREAD_API
-  /* Make sure g_thread_init has been called.
-   * FIXME - Probably not a good idea in a shared library,
-   * but what can we do *and* remain backwards compatible? */
-  if (!g_thread_supported ()) g_thread_init (NULL);
-#endif
+    thread = FLUID_NEW(fluid_thread_t);
+    if (prio_level > 0) {
+        info = FLUID_NEW (fluid_thread_info_t);
 
-  if (prio_level > 0)
-  {
-    info = FLUID_NEW (fluid_thread_info_t);
+        if (!info) {
+            FLUID_LOG(FLUID_ERR, "Out of memory");
+            return NULL;
+        }
 
-    if (!info)
-    {
-      FLUID_LOG(FLUID_ERR, "Out of memory");
-      return NULL;
+        info->func = func;
+        info->data = data;
+        info->prio_level = prio_level;
+        data = info;
+        func = fluid_thread_high_prio;
     }
 
-    info->func = func;
-    info->data = data;
-    info->prio_level = prio_level;
-#if NEW_GLIB_THREAD_API
-    thread = g_thread_try_new (name, fluid_thread_high_prio, info, &err);
+#if _WIN32
+    *thread = CreateThread(NULL, 0, func, data, 0, NULL);
 #else
-    thread = g_thread_create (fluid_thread_high_prio, info, detach == FALSE, &err);
+    pthread_create(thread, NULL, func, data);
 #endif
-  }
-#if NEW_GLIB_THREAD_API
-  else thread = g_thread_try_new (name, (GThreadFunc)func, data, &err);
+
+    if (!thread) {
+        FLUID_LOG(FLUID_ERR, "Failed to create the thread");
+        return NULL;
+    }
+
+    if (detach) {
+#if _WIN32
+        CloseHandle(*thread);
 #else
-  else thread = g_thread_create ((GThreadFunc)func, data, detach == FALSE, &err);
+        pthread_detach(*thread);
 #endif
+    }
 
-  if (!thread)
-  {
-    FLUID_LOG(FLUID_ERR, "Failed to create the thread: %s",
-              fluid_gerror_message (err));
-    g_clear_error (&err);
-    return NULL;
-  }
-
-#if NEW_GLIB_THREAD_API
-  if (detach) g_thread_unref (thread);  // Release thread reference, if caller wants to detach
-#endif
-
-  return thread;
+    return thread;
 }
 
 /**
@@ -680,13 +691,18 @@ delete_fluid_thread(fluid_thread_t* thread)
 int
 fluid_thread_join(fluid_thread_t* thread)
 {
-  g_thread_join (thread);
+#ifdef _WIN32
+    WaitForSingleObject(*thread, INFINITE);
+    CloseHandle(*thread);
+#else
+    pthread_join(*thread, NULL);
+#endif
 
-  return FLUID_OK;
+    return FLUID_OK;
 }
 
 
-void
+FLUID_THREAD_RETURN_TYPE
 fluid_timer_run (void *data)
 {
   fluid_timer_t *timer;
@@ -711,15 +727,19 @@ fluid_timer_run (void *data)
        two callbacks bringing in the "absolute" time (count *
        timer->msec) */
     delay = (count * timer->msec) - (fluid_curtime() - start);
-    if (delay > 0) g_usleep (delay * 1000);
-  }
+#ifdef _WIN32
+        if (delay > 0) Sleep (delay);
+#else
+        if (delay > 0) usleep (delay * 1000);
+#endif
+    }
 
   FLUID_LOG (FLUID_DBG, "Timer thread finished");
 
   if (timer->auto_destroy)
     FLUID_FREE (timer);
 
-  return;
+  return FLUID_THREAD_RETURN_VALUE;
 }
 
 fluid_timer_t*
@@ -865,22 +885,8 @@ fluid_istream_gets (fluid_istream_t in, char* buf, int len)
 
   while (--len > 0)
   {
-#ifndef WIN32
     n = read(in, &c, 1);
     if (n == -1) return -1;
-#else
-    /* Handle read differently depending on if its a socket or file descriptor */
-    if (!(in & WIN32_SOCKET_FLAG))
-    {
-      n = read(in, &c, 1);
-      if (n == -1) return -1;
-    }
-    else
-    {
-      n = recv(in & ~WIN32_SOCKET_FLAG, &c, 1, 0);
-      if (n == SOCKET_ERROR) return -1;
-    }
-#endif
 
     if (n == 0)
     {
@@ -932,365 +938,5 @@ fluid_ostream_printf (fluid_ostream_t out, char* format, ...)
 
   buf[4095] = 0;
 
-#ifndef WIN32
   return write (out, buf, strlen (buf));
-#else
-  {
-    int retval;
-
-    /* Handle write differently depending on if its a socket or file descriptor */
-    if (!(out & WIN32_SOCKET_FLAG))
-      return write(out, buf, strlen (buf));
-
-    /* Socket */
-    retval = send (out & ~WIN32_SOCKET_FLAG, buf, strlen (buf), 0);
-
-    return retval != SOCKET_ERROR ? retval : -1;
-  }
-#endif
 }
-
-int fluid_server_socket_join(fluid_server_socket_t *server_socket)
-{
-  return fluid_thread_join (server_socket->thread);
-}
-
-
-#ifndef WIN32           // Not win32?
-
-#define SOCKET_ERROR -1
-
-fluid_istream_t fluid_socket_get_istream (fluid_socket_t sock)
-{
-  return sock;
-}
-
-fluid_ostream_t fluid_socket_get_ostream (fluid_socket_t sock)
-{
-  return sock;
-}
-
-void fluid_socket_close(fluid_socket_t sock)
-{
-  if (sock != INVALID_SOCKET)
-    close (sock);
-}
-
-static void
-fluid_server_socket_run (void *data)
-{
-  fluid_server_socket_t *server_socket = (fluid_server_socket_t *)data;
-  fluid_socket_t client_socket;
-#ifdef IPV6
-  struct sockaddr_in6 addr;
-  char straddr[INET6_ADDRSTRLEN];
-#else
-  struct sockaddr_in addr;
-  char straddr[INET_ADDRSTRLEN];
-#endif
-  socklen_t addrlen = sizeof (addr);
-  int retval;
-  FLUID_MEMSET((char *)&addr, 0, sizeof(addr));
-
-  FLUID_LOG (FLUID_DBG, "Server listening for connections");
-
-  while (server_socket->cont)
-  {
-    client_socket = accept (server_socket->socket, (struct sockaddr *)&addr, &addrlen);
-
-    FLUID_LOG (FLUID_DBG, "New client connection");
-
-    if (client_socket == INVALID_SOCKET)
-    {
-      if (server_socket->cont)
-	FLUID_LOG(FLUID_ERR, "Failed to accept connection");
-
-      server_socket->cont = 0;
-      return;
-    } else {
-#ifdef IPV6
-      inet_ntop(AF_INET6, &addr.sin6_addr, straddr, sizeof(straddr));
-#else
-      inet_ntop(AF_INET, &addr.sin_addr, straddr, sizeof(straddr));
-#endif
-      retval = server_socket->func (server_socket->data, client_socket,
-                                    straddr);
-
-      if (retval != 0)
-	fluid_socket_close(client_socket);
-    }
-  }
-
-  FLUID_LOG(FLUID_DBG, "Server closing");
-}
-
-fluid_server_socket_t*
-new_fluid_server_socket(int port, fluid_server_func_t func, void* data)
-{
-  fluid_server_socket_t* server_socket;
-#ifdef IPV6
-  struct sockaddr_in6 addr;
-#else
-  struct sockaddr_in addr;
-#endif
-  fluid_socket_t sock;
-
-  g_return_val_if_fail (func != NULL, NULL);
-#ifdef IPV6
-  sock = socket(AF_INET6, SOCK_STREAM, 0);
-  if (sock == INVALID_SOCKET) {
-    FLUID_LOG(FLUID_ERR, "Failed to create server socket");
-    return NULL;
-  }
-
-  FLUID_MEMSET((char *)&addr, 0, sizeof(struct sockaddr_in6));
-  addr.sin6_family = AF_INET6;
-  addr.sin6_addr = in6addr_any;
-  addr.sin6_port = htons(port);
-#else
-
-  sock = socket(AF_INET, SOCK_STREAM, 0);
-  if (sock == INVALID_SOCKET) {
-    FLUID_LOG(FLUID_ERR, "Failed to create server socket");
-    return NULL;
-  }
-
-  FLUID_MEMSET((char *)&addr, 0, sizeof(struct sockaddr_in));
-  addr.sin_family = AF_INET;
-  addr.sin_addr.s_addr = htonl(INADDR_ANY);
-  addr.sin_port = htons(port);
-#endif
-  if (bind(sock, (const struct sockaddr *) &addr, sizeof(addr)) == SOCKET_ERROR) {
-    FLUID_LOG(FLUID_ERR, "Failed to bind server socket");
-    fluid_socket_close(sock);
-    return NULL;
-  }
-
-  if (listen(sock, 10) == SOCKET_ERROR) {
-    FLUID_LOG(FLUID_ERR, "Failed listen on server socket");
-    fluid_socket_close(sock);
-    return NULL;
-  }
-
-  server_socket = FLUID_NEW(fluid_server_socket_t);
-  if (server_socket == NULL) {
-    FLUID_LOG(FLUID_ERR, "Out of memory");
-    fluid_socket_close(sock);
-    return NULL;
-  }
-
-  server_socket->socket = sock;
-  server_socket->func = func;
-  server_socket->data = data;
-  server_socket->cont = 1;
-
-  server_socket->thread = new_fluid_thread("server", fluid_server_socket_run, server_socket,
-                                           0, FALSE);
-  if (server_socket->thread == NULL) {
-    FLUID_FREE(server_socket);
-    fluid_socket_close(sock);
-    return NULL;
-  }
-
-  return server_socket;
-}
-
-int delete_fluid_server_socket(fluid_server_socket_t* server_socket)
-{
-  server_socket->cont = 0;
-  if (server_socket->socket != INVALID_SOCKET) {
-    fluid_socket_close(server_socket->socket);
-  }
-  if (server_socket->thread) {
-    delete_fluid_thread(server_socket->thread);
-  }
-  FLUID_FREE(server_socket);
-  return FLUID_OK;
-}
-
-
-#else           // Win32 is "special"
-
-
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-
-fluid_istream_t fluid_socket_get_istream (fluid_socket_t sock)
-{
-  return sock | WIN32_SOCKET_FLAG;
-}
-
-fluid_ostream_t fluid_socket_get_ostream (fluid_socket_t sock)
-{
-  return sock | WIN32_SOCKET_FLAG;
-}
-
-void fluid_socket_close (fluid_socket_t sock)
-{
-  if (sock != INVALID_SOCKET)
-    closesocket (sock);
-}
-
-static void fluid_server_socket_run (void *data)
-{
-  fluid_server_socket_t *server_socket = (fluid_server_socket_t *)data;
-  fluid_socket_t client_socket;
-#ifdef IPV6
-  struct sockaddr_in6 addr;
-  char straddr[INET6_ADDRSTRLEN];
-#else
-  struct sockaddr_in addr;
-  char straddr[INET_ADDRSTRLEN];
-#endif
-  socklen_t addrlen = sizeof (addr);
-  int r;
-  FLUID_MEMSET((char *)&addr, 0, sizeof(addr));
-
-  FLUID_LOG(FLUID_DBG, "Server listening for connections");
-
-  while (server_socket->cont)
-  {
-    client_socket = accept (server_socket->socket, (struct sockaddr *)&addr, &addrlen);
-
-    FLUID_LOG (FLUID_DBG, "New client connection");
-
-    if (client_socket == INVALID_SOCKET)
-    {
-      if (server_socket->cont)
-	FLUID_LOG (FLUID_ERR, "Failed to accept connection: %ld", WSAGetLastError ());
-
-      server_socket->cont = 0;
-      return;
-    }
-    else
-    {
-#ifdef IPV6
-      inet_ntop(AF_INET6, &addr.sin6_addr, straddr, sizeof(straddr));
-#else
-      inet_ntop(AF_INET, &addr.sin_addr, straddr, sizeof(straddr));
-#endif
-      r = server_socket->func (server_socket->data, client_socket,
-                               straddr);
-      if (r != 0)
-	fluid_socket_close (client_socket);
-    }
-  }
-
-  FLUID_LOG (FLUID_DBG, "Server closing");
-}
-
-fluid_server_socket_t*
-new_fluid_server_socket(int port, fluid_server_func_t func, void* data)
-{
-  fluid_server_socket_t* server_socket;
-#ifdef IPV6
-  struct sockaddr_in6 addr;
-#else
-  struct sockaddr_in addr;
-#endif
-
-  fluid_socket_t sock;
-  WSADATA wsaData;
-  int retval;
-
-  g_return_val_if_fail (func != NULL, NULL);
-
-  // Win32 requires initialization of winsock
-  retval = WSAStartup (MAKEWORD (2,2), &wsaData);
-
-  if (retval != 0)
-  {
-    FLUID_LOG(FLUID_ERR, "Server socket creation error: WSAStartup failed: %d", retval);
-    return NULL;
-  }
-#ifdef IPV6
-  sock = socket (AF_INET6, SOCK_STREAM, 0);
-  if (sock == INVALID_SOCKET)
-  {
-    FLUID_LOG (FLUID_ERR, "Failed to create server socket: %ld", WSAGetLastError ());
-    WSACleanup ();
-    return NULL;
-  }
-  addr.sin6_family = AF_INET6;
-  addr.sin6_port = htons (port);
-  addr.sin6_addr = in6addr_any;
-#else
-
-  sock = socket (AF_INET, SOCK_STREAM, 0);
-
-  if (sock == INVALID_SOCKET)
-  {
-    FLUID_LOG (FLUID_ERR, "Failed to create server socket: %ld", WSAGetLastError ());
-    WSACleanup ();
-    return NULL;
-  }
-
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons (port);
-  addr.sin_addr.s_addr = htonl (INADDR_ANY);
-#endif
-  retval = bind (sock, (struct sockaddr *)&addr, sizeof (addr));
-
-  if (retval == SOCKET_ERROR)
-  {
-    FLUID_LOG (FLUID_ERR, "Failed to bind server socket: %ld", WSAGetLastError ());
-    fluid_socket_close (sock);
-    WSACleanup ();
-    return NULL;
-  }
-
-  if (listen (sock, SOMAXCONN) == SOCKET_ERROR)
-  {
-    FLUID_LOG (FLUID_ERR, "Failed to listen on server socket: %ld", WSAGetLastError ());
-    fluid_socket_close (sock);
-    WSACleanup ();
-    return NULL;
-  }
-
-  server_socket = FLUID_NEW (fluid_server_socket_t);
-
-  if (server_socket == NULL)
-  {
-    FLUID_LOG (FLUID_ERR, "Out of memory");
-    fluid_socket_close (sock);
-    WSACleanup ();
-    return NULL;
-  }
-
-  server_socket->socket = sock;
-  server_socket->func = func;
-  server_socket->data = data;
-  server_socket->cont = 1;
-
-  server_socket->thread = new_fluid_thread("server", fluid_server_socket_run, server_socket,
-                                           0, FALSE);
-  if (server_socket->thread == NULL)
-  {
-    FLUID_FREE (server_socket);
-    fluid_socket_close (sock);
-    WSACleanup ();
-    return NULL;
-  }
-
-  return server_socket;
-}
-
-int delete_fluid_server_socket(fluid_server_socket_t *server_socket)
-{
-  server_socket->cont = 0;
-
-  if (server_socket->socket != INVALID_SOCKET)
-    fluid_socket_close (server_socket->socket);
-
-  if (server_socket->thread)
-    delete_fluid_thread (server_socket->thread);
-
-  FLUID_FREE (server_socket);
-
-  WSACleanup ();        // Should be called the same number of times as WSAStartup
-
-  return FLUID_OK;
-}
-
-#endif

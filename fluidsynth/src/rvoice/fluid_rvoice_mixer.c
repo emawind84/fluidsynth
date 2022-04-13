@@ -24,7 +24,6 @@
 #include "fluid_rev.h"
 #include "fluid_chorus.h"
 #include "fluidsynth_priv.h"
-#include "fluid_ladspa.h"
 
 #define SYNTH_REVERB_CHANNEL 0
 #define SYNTH_CHORUS_CHANNEL 1
@@ -46,7 +45,7 @@ struct _fluid_mixer_buffers_t {
   fluid_rvoice_t** finished_voices; /* List of voices who have finished */
   int finished_voice_count;
 
-  int ready;             /**< Atomic: buffers are ready for mixing */
+  atomic_int ready;             /**< Atomic: buffers are ready for mixing */
 
   int buf_blocks;             /**< Number of blocks allocated in the buffers */
 
@@ -88,14 +87,14 @@ struct _fluid_rvoice_mixer_t {
 #ifdef ENABLE_MIXER_THREADS
 //  int sleeping_threads;        /**< Atomic: number of threads currently asleep */
 //  int active_threads;          /**< Atomic: number of threads in the thread loop */
-  int threads_should_terminate; /**< Atomic: Set to TRUE when threads should terminate */
-  int current_rvoice;           /**< Atomic: for the threads to know next voice to  */
+  atomic_int threads_should_terminate; /**< Atomic: Set to TRUE when threads should terminate */
+  atomic_int current_rvoice;           /**< Atomic: for the threads to know next voice to  */
   fluid_cond_t* wakeup_threads; /**< Signalled when the threads should wake up */
   fluid_cond_mutex_t* wakeup_threads_m; /**< wakeup_threads mutex companion */
   fluid_cond_t* thread_ready; /**< Signalled from thread, when the thread has a buffer ready for mixing */
   fluid_cond_mutex_t* thread_ready_m; /**< thread_ready mutex companion */
 
-  int thread_count;            /**< Number of extra mixer threads for multi-core rendering */
+  atomic_int thread_count;            /**< Number of extra mixer threads for multi-core rendering */
   fluid_mixer_buffers_t* threads;    /**< Array of mixer threads (thread_count in length) */
 #endif
 };
@@ -293,7 +292,10 @@ static FLUID_INLINE void fluid_rvoice_mixer_process_finished_voices(fluid_rvoice
 {
 #ifdef ENABLE_MIXER_THREADS  
   int i;
-  for (i=0; i < mixer->thread_count; i++)
+  int thread_count;
+
+  thread_count = fluid_atomic_int_get(&mixer->thread_count);
+  for (i=0; i < thread_count; i++)
     fluid_mixer_buffer_process_finished_voices(&mixer->threads[i]);
 #endif
   fluid_mixer_buffer_process_finished_voices(&mixer->buffers);
@@ -394,7 +396,8 @@ fluid_rvoice_mixer_set_polyphony(fluid_rvoice_mixer_t* handler, int value)
 #ifdef ENABLE_MIXER_THREADS
   {
     int i;
-    for (i=0; i < handler->thread_count; i++)
+    int thread_count = fluid_atomic_int_get(&handler->thread_count);
+    for (i=0; i < thread_count; i++)
       if (fluid_mixer_buffers_update_polyphony(&handler->threads[i], value) 
           == FLUID_FAILED)
         return FLUID_FAILED;
@@ -708,7 +711,7 @@ int fluid_rvoice_mixer_get_bufs(fluid_rvoice_mixer_t* mixer,
 static FLUID_INLINE fluid_rvoice_t* 
 fluid_mixer_get_mt_rvoice(fluid_rvoice_mixer_t* mixer)
 {
-  int i = fluid_atomic_int_exchange_and_add(&mixer->current_rvoice, 1);
+  int i = fluid_atomic_int_inc(&mixer->current_rvoice) - 1;
   if (i >= mixer->active_voices) 
     return NULL;
   return mixer->rvoices[i];
@@ -720,7 +723,7 @@ fluid_mixer_get_mt_rvoice(fluid_rvoice_mixer_t* mixer)
 #define THREAD_BUF_TERMINATE 3
 
 /* Core thread function (processes voices in parallel to primary synthesis thread) */
-static void
+static FLUID_THREAD_RETURN_TYPE
 fluid_mixer_thread_func (void* data)
 {
   fluid_mixer_buffers_t* buffers = data;  
@@ -761,6 +764,7 @@ fluid_mixer_thread_func (void* data)
     }
   }
 
+  return FLUID_THREAD_RETURN_VALUE;
 }
 
 static void
@@ -828,8 +832,9 @@ fluid_render_loop_multithread(fluid_rvoice_mixer_t* mixer)
 		    mixer->buffers.buf_count * 2 + mixer->buffers.fx_buf_count * 2);
   // How many threads should we start this time?
   int extra_threads = mixer->active_voices / VOICES_PER_THREAD;
-  if (extra_threads > mixer->thread_count)
-    extra_threads = mixer->thread_count;
+  int thread_count = fluid_atomic_int_get(&mixer->thread_count);
+  if (extra_threads > thread_count)
+    extra_threads = thread_count;
   if (extra_threads == 0) {
     // No extra threads? No thread overhead!
     fluid_render_loop_singlethread(mixer);
@@ -891,16 +896,18 @@ fluid_rvoice_mixer_set_threads(fluid_rvoice_mixer_t* mixer, int thread_count,
   int i;
  
   // Kill all existing threads first
-  if (mixer->thread_count) {
+  if (fluid_atomic_int_get(&mixer->thread_count)) {
+        int thread_count;
     fluid_atomic_int_set(&mixer->threads_should_terminate, 1);
     // Signal threads to wake up
     fluid_cond_mutex_lock(mixer->wakeup_threads_m);
-    for (i=0; i < mixer->thread_count; i++)
+    thread_count = fluid_atomic_int_get(&mixer->thread_count);
+    for (i=0; i < thread_count; i++)
       fluid_atomic_int_set(&mixer->threads[i].ready, THREAD_BUF_TERMINATE);
     fluid_cond_broadcast(mixer->wakeup_threads);
     fluid_cond_mutex_unlock(mixer->wakeup_threads_m);
   
-    for (i=0; i < mixer->thread_count; i++) {
+    for (i=0; i < thread_count; i++) {
       if (mixer->threads[i].thread) {
         fluid_thread_join(mixer->threads[i].thread);
         delete_fluid_thread(mixer->threads[i].thread);
@@ -908,7 +915,7 @@ fluid_rvoice_mixer_set_threads(fluid_rvoice_mixer_t* mixer, int thread_count,
       fluid_mixer_buffers_free(&mixer->threads[i]);
     }
     FLUID_FREE(mixer->threads);
-    mixer->thread_count = 0;
+    fluid_atomic_int_set(&mixer->thread_count, 0);
     mixer->threads = NULL;
   }
   
@@ -923,13 +930,13 @@ fluid_rvoice_mixer_set_threads(fluid_rvoice_mixer_t* mixer, int thread_count,
     return;
   }
   FLUID_MEMSET(mixer->threads, 0, thread_count*sizeof(fluid_mixer_buffers_t));
-  mixer->thread_count = thread_count;
+  fluid_atomic_int_set(&mixer->thread_count, thread_count);
   for (i=0; i < thread_count; i++) {
     fluid_mixer_buffers_t* b = &mixer->threads[i]; 
     if (!fluid_mixer_buffers_init(b, mixer))
       return;
     fluid_atomic_int_set(&b->ready, THREAD_BUF_NODATA);
-    g_snprintf (name, sizeof (name), "mixer%d", i);
+    snprintf (name, sizeof (name), "mixer%d", i);
     b->thread = new_fluid_thread(name, fluid_mixer_thread_func, b, prio_level, 0);
     if (!b->thread)
       return;
@@ -956,7 +963,7 @@ fluid_rvoice_mixer_render(fluid_rvoice_mixer_t* mixer, int blockcount)
   fluid_profile(FLUID_PROF_ONE_BLOCK_CLEAR, prof_ref);
   
 #ifdef ENABLE_MIXER_THREADS
-  if (mixer->thread_count > 0)
+  if (fluid_atomic_int_get(&mixer->thread_count) > 0)
     fluid_render_loop_multithread(mixer);
   else
 #endif
