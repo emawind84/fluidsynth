@@ -22,8 +22,6 @@
 #ifndef _FLUIDSYNTH_PRIV_H
 #define _FLUIDSYNTH_PRIV_H
 
-#include <glib.h>
-
 #if HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -44,8 +42,20 @@
 #include <stdlib.h>
 #endif
 
+#if HAVE_STDINT_H
+#include <stdint.h>
+#endif
+
 #if HAVE_STDIO_H
 #include <stdio.h>
+#endif
+
+#if HAVE_STDBOOL_H
+#include <stdbool.h>
+#endif
+
+#if HAVE_PTHREAD_H
+#include <pthread.h>
 #endif
 
 #if HAVE_MATH_H
@@ -68,10 +78,6 @@
 #include <fcntl.h>
 #endif
 
-#if HAVE_SYS_MMAN_H
-#include <sys/mman.h>
-#endif
-
 #if HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
@@ -84,37 +90,12 @@
 #include <sys/time.h>
 #endif
 
-#if HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
-#endif
-
-#if HAVE_NETINET_IN_H
-#include <netinet/in.h>
-#endif
-
-#if HAVE_NETINET_TCP_H
-#include <netinet/tcp.h>
-#endif
-
-#if HAVE_ARPA_INET_H
-#include <arpa/inet.h>
-#endif
-
 #if HAVE_LIMITS_H
 #include <limits.h>
 #endif
 
-#if HAVE_PTHREAD_H
-#include <pthread.h>
-#endif
-
-#if HAVE_IO_H
-#include <io.h>
-#endif
-
-#if HAVE_WINDOWS_H
-#include <winsock2.h>
-#include <ws2tcpip.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
 
@@ -125,8 +106,6 @@
 #define snprintf _snprintf
 #define vsnprintf _vsnprintf
 
-#define DSOUND_SUPPORT 1
-#define WINMIDI_SUPPORT 1
 #define STDIN_FILENO 0
 #define STDOUT_FILENO 1
 #define STDERR_FILENO 2
@@ -155,45 +134,39 @@ typedef float fluid_real_t;
 typedef double fluid_real_t;
 #endif
 
-
-#if defined(WIN32)
-typedef SOCKET fluid_socket_t;
-#else
-typedef int fluid_socket_t;
-#define INVALID_SOCKET -1
-#endif
-
 #if defined(SUPPORTS_VLA)
 #  define FLUID_DECLARE_VLA(_type, _name, _len) \
      _type _name[_len]
 #else
 #  define FLUID_DECLARE_VLA(_type, _name, _len) \
-     _type* _name = g_newa(_type, (_len))
+     _type* _name = _alloca(sizeof(_type) * (_len))
 #endif
 
 
 /** Integer types  */
 //typedef gint8              sint8;
-typedef guint8             uint8;
+typedef uint8_t             uint8;
 //typedef gint16             sint16;
 //typedef guint16            uint16;
-typedef gint32             sint32;
-typedef guint32            uint32;
+typedef int32_t             sint32;
+typedef uint32_t            uint32;
 //typedef gint64             sint64;
 //typedef guint64            uint64;
 
+/** Boolean types  */
+#ifndef _WIN32
+#define TRUE true
+#define FALSE false
+#endif
 
 /***************************************************************
  *
  *       FORWARD DECLARATIONS
  */
 typedef struct _fluid_env_data_t fluid_env_data_t;
-typedef struct _fluid_adriver_definition_t fluid_adriver_definition_t;
 typedef struct _fluid_channel_t fluid_channel_t;
 typedef struct _fluid_tuning_t fluid_tuning_t;
 typedef struct _fluid_hashtable_t  fluid_hashtable_t;
-typedef struct _fluid_client_t fluid_client_t;
-typedef struct _fluid_server_socket_t fluid_server_socket_t;
 typedef struct _fluid_sample_timer_t fluid_sample_timer_t;
 
 /***************************************************************

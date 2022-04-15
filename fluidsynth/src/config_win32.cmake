@@ -2,10 +2,10 @@
 
 #cmakedefine HAVE_IO_H @HAVE_IO_H@
 
-#define DSOUND_SUPPORT 1
-#define WINMIDI_SUPPORT 1
+#define DSOUND_SUPPORT 0
+#define WINMIDI_SUPPORT 0
+#define WITHOUT_SERVER 1
 
-#define snprintf _snprintf
 #define strcasecmp _stricmp
 
 #if _MSC_VER < 1500
