@@ -112,6 +112,7 @@ include ( CheckFunctionExists )
 check_include_file ( string.h HAVE_STRING_H )
 check_include_file ( stdlib.h HAVE_STDLIB_H )
 check_include_file ( stdio.h HAVE_STDIO_H )
+check_include_file ( stdint.h HAVE_STDINT_H )
 check_include_file ( math.h HAVE_MATH_H )
 check_include_file ( errno.h HAVE_ERRNO_H )
 check_include_file ( stdarg.h HAVE_STDARG_H )
@@ -331,7 +332,7 @@ else(NOT enable-pkgconfig)
     find_package ( PkgConfig REQUIRED )
 
     # Mandatory libraries: glib and gthread
-    pkg_check_modules ( GLIB REQUIRED glib-2.0>=2.6.5 gthread-2.0>=2.6.5 )
+    #pkg_check_modules ( GLIB REQUIRED glib-2.0>=2.6.5 gthread-2.0>=2.6.5 )
 
     include ( UnsetPkgConfig )
 
