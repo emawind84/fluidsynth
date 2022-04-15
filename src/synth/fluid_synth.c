@@ -3621,11 +3621,10 @@ fluid_synth_get_sfont_by_name(fluid_synth_t* synth, const char *name)
  * Get active preset on a MIDI channel.
  * @param synth FluidSynth instance
  * @param chan MIDI channel number (0 to MIDI channel count - 1)
- * @return Preset or NULL if no preset active on channel
- * @deprecated fluid_synth_get_channel_info() should replace most use cases.
+ * @return Preset or NULL if no preset active on \c chan
  *
  * @note Should only be called from within synthesis thread, which includes
- * SoundFont loader preset noteon methods.  Not thread safe otherwise.
+ * SoundFont loader preset noteon methods. Not thread safe otherwise.
  */
 fluid_preset_t *
 fluid_synth_get_channel_preset(fluid_synth_t* synth, int chan)
@@ -3646,6 +3645,8 @@ fluid_synth_get_channel_preset(fluid_synth_t* synth, int chan)
  * @param chan MIDI channel number (0 to MIDI channel count - 1)
  * @param info Caller supplied structure to fill with preset information
  * @return #FLUID_OK on success, #FLUID_FAILED otherwise
+ * @deprecated Provides redundant functionality that can be achieved with
+ * fluid_synth_get_channel_preset() or fluid_synth_get_program().
  * @since 1.1.1
  */
 int
@@ -4306,12 +4307,14 @@ fluid_synth_update_voice_tuning_LOCAL (fluid_synth_t *synth, fluid_channel_t *ch
  * @param name Label name for this tuning
  * @param pitch Array of pitch values (length of 128, each value is number of
  *   cents, for example normally note 0 is 0.0, 1 is 100.0, 60 is 6000.0, etc).
- *   Pass NULL to create a well-tempered (normal) scale.
+ *   Pass NULL to create a equal tempered (normal) scale.
  * @return FLUID_OK on success, FLUID_FAILED otherwise
  *
  * @note Tuning is not applied in realtime to existing notes of the replaced
  * tuning (if any), use fluid_synth_activate_key_tuning() instead to specify
  * this behavior.
+ * 
+ * @deprecated Use fluid_synth_activate_key_tuning(synth, bank, prog, name, pitch, FALSE) instead.
  */
 int
 fluid_synth_create_key_tuning(fluid_synth_t* synth, int bank, int prog,
@@ -4328,7 +4331,7 @@ fluid_synth_create_key_tuning(fluid_synth_t* synth, int bank, int prog,
  * @param name Label name for this tuning
  * @param pitch Array of pitch values (length of 128, each value is number of
  *   cents, for example normally note 0 is 0.0, 1 is 100.0, 60 is 6000.0, etc).
- *   Pass NULL to create a well-tempered (normal) scale.
+ *   Pass NULL to create a equal tempered (normal) scale.
  * @param apply TRUE to apply new tuning in realtime to existing notes which
  *   are using the replaced tuning (if any), FALSE otherwise
  * @return FLUID_OK on success, FLUID_FAILED otherwise
@@ -4374,6 +4377,8 @@ fluid_synth_activate_key_tuning(fluid_synth_t* synth, int bank, int prog,
  * @note Tuning is not applied in realtime to existing notes of the replaced
  * tuning (if any), use fluid_synth_activate_octave_tuning() instead to specify
  * this behavior.
+ * 
+ * @deprecated Use fluid_synth_activate_octave_tuning(synth, bank, prog, name, pitch, FALSE) instead.
  */
 int
 fluid_synth_create_octave_tuning(fluid_synth_t* synth, int bank, int prog,
@@ -4437,7 +4442,7 @@ fluid_synth_activate_octave_tuning(fluid_synth_t* synth, int bank, int prog,
  * @return FLUID_OK on success, FLUID_FAILED otherwise
  *
  * @note Prior to version 1.1.0 it was an error to specify a tuning that didn't
- * already exist.  Starting with 1.1.0, the default equal tempered scale will be
+ * already exist. Starting with 1.1.0, the default equal tempered scale will be
  * used as a basis, if no tuning exists for the given bank and prog.
  */
 int
@@ -4489,8 +4494,10 @@ fluid_synth_tune_notes(fluid_synth_t* synth, int bank, int prog,
  * should cause existing notes to update.
  *
  * @note Prior to version 1.1.0 it was an error to select a tuning that didn't
- * already exist.  Starting with 1.1.0, a default equal tempered scale will be
+ * already exist. Starting with 1.1.0, a default equal tempered scale will be
  * created, if no tuning exists for the given bank and prog.
+ * 
+ * @deprecated Use fluid_synth_activate_tuning(synth, chan, bank, prog, FALSE) instead.
  */
 int
 fluid_synth_select_tuning(fluid_synth_t* synth, int chan, int bank, int prog)
@@ -4574,7 +4581,7 @@ fluid_synth_set_tuning_LOCAL (fluid_synth_t *synth, int chan,
 }
 
 /**
- * Clear tuning scale on a MIDI channel (set it to the default well-tempered scale).
+ * Clear tuning scale on a MIDI channel (set it to the default equal tempered scale).
  * @param synth FluidSynth instance
  * @param chan MIDI channel number (0 to MIDI channel count - 1)
  * @return FLUID_OK on success, FLUID_FAILED otherwise
@@ -4582,6 +4589,8 @@ fluid_synth_set_tuning_LOCAL (fluid_synth_t *synth, int chan,
  * @note This function does NOT activate tuning change in realtime, use
  * fluid_synth_deactivate_tuning() instead to specify whether tuning change
  * should cause existing notes to update.
+ * 
+ * @deprecated Use fluid_synth_deactivate_tuning(synth, chan, FALSE) instead.
  */
 int
 fluid_synth_reset_tuning(fluid_synth_t* synth, int chan)
@@ -4728,6 +4737,7 @@ fluid_synth_get_settings(fluid_synth_t* synth)
  * @param name Name of setting parameter
  * @param str Value to assign to the setting
  * @return FLUID_OK on success, FLUID_FAILED otherwise
+ * @deprecated Use fluid_settings_setstr() in combination with fluid_synth_get_settings() instead.
  */
 int
 fluid_synth_setstr(fluid_synth_t* synth, const char* name, const char* str)
@@ -4744,6 +4754,7 @@ fluid_synth_setstr(fluid_synth_t* synth, const char* name, const char* str)
  * @param name Name of setting parameter
  * @param str Location to store a pointer to the newly allocated string value
  * @return FLUID_OK on success, FLUID_FAILED otherwise
+ * @deprecated Use fluid_settings_dupstr() in combination with fluid_synth_get_settings() instead.
  *
  * The returned string is owned by the caller and should be freed with free()
  * when finished with it.
@@ -4764,6 +4775,7 @@ fluid_synth_dupstr(fluid_synth_t* synth, const char* name, char** str)
  * @param name Name of setting parameter
  * @param val Value to assign to the setting
  * @return FLUID_OK on success, FLUID_FAILED otherwise
+ * @deprecated Use fluid_settings_setnum() in combination with fluid_synth_get_settings() instead.
  */
 int
 fluid_synth_setnum(fluid_synth_t* synth, const char* name, double val)
@@ -4780,6 +4792,7 @@ fluid_synth_setnum(fluid_synth_t* synth, const char* name, double val)
  * @param name Name of setting parameter
  * @param val Location to store the current value of the setting
  * @return FLUID_OK on success, FLUID_FAILED otherwise
+ * @deprecated Use fluid_settings_getnum() in combination with fluid_synth_get_settings() instead.
  */
 int
 fluid_synth_getnum(fluid_synth_t* synth, const char* name, double* val)
@@ -4796,6 +4809,7 @@ fluid_synth_getnum(fluid_synth_t* synth, const char* name, double* val)
  * @param name Name of setting parameter
  * @param val Value to assign to the setting
  * @return FLUID_OK on success, FLUID_FAILED otherwise
+ * @deprecated Use fluid_settings_setint() in combination with fluid_synth_get_settings() instead.
  */
 int
 fluid_synth_setint(fluid_synth_t* synth, const char* name, int val)
@@ -4812,6 +4826,7 @@ fluid_synth_setint(fluid_synth_t* synth, const char* name, int val)
  * @param name Name of setting parameter
  * @param val Location to store the current value of the setting
  * @return FLUID_OK on success, FLUID_FAILED otherwise
+ * @deprecated Use fluid_settings_getint() in combination with fluid_synth_get_settings() instead.
  */
 int
 fluid_synth_getint(fluid_synth_t* synth, const char* name, int* val)
@@ -4920,6 +4935,7 @@ fluid_synth_get_gen(fluid_synth_t* synth, int chan, int param)
  * @param router MIDI router to assign to the synth
  *
  * @note This should only be done once and prior to using the synth.
+ * @deprecated This function is only used by shell command handler, which will be refactored in a future release.
  */
 void
 fluid_synth_set_midi_router(fluid_synth_t* synth, fluid_midi_router_t* router)
@@ -5138,7 +5154,7 @@ void fluid_synth_api_exit(fluid_synth_t* synth)
  * Set midi channel type 
  * @param synth FluidSynth instance
  * @param chan MIDI channel number (0 to MIDI channel count - 1)
- * @param type CHANNEL_TYPE_MELODIC, or CHANNEL_TYPE_DRUM
+ * @param type MIDI channel type (#fluid_midi_channel_type)
  * @return FLUID_OK on success, FLUID_FAILED otherwise
  * @since 1.1.4
  */
