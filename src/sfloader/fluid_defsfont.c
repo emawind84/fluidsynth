@@ -1937,7 +1937,7 @@ fluid_sample_import_sfont(fluid_sample_t* sample, SFSample* sfsample, fluid_defs
     int inv_loop = FALSE;
 
     // initialize file position indicator and SF_INFO structure
-    g_assert(sample->userdata == NULL);
+    // g_assert(sample->userdata == NULL);
     memset(&sfinfo, 0, sizeof(sfinfo));
 
     // open sample as a virtual file in memory
