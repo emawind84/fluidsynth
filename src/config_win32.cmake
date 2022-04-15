@@ -7,12 +7,12 @@
 #define WITHOUT_SERVER 1
 
 #if _MSC_VER < 1900
-#define snprintf _snprintf
+#define snprintf g_snprintf
 #endif
 #define strcasecmp _stricmp
 
 #if _MSC_VER < 1500
-#define vsnprintf _vsnprintf
+#define vsnprintf g_vsnprintf
 #endif
 
 #define STDIN_FILENO 0

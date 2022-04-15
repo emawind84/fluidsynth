@@ -103,8 +103,8 @@
 #ifdef MINGW32
 
 #include <stdint.h>
-#define snprintf _snprintf
-#define vsnprintf _vsnprintf
+#define snprintf g_snprintf
+#define vsnprintf g_vsnprintf
 
 #define STDIN_FILENO 0
 #define STDOUT_FILENO 1
