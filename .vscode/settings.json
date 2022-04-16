@@ -1,0 +1,10 @@
+{
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "cmake.sourceDirectory": "${workspaceFolder}/fluidsynth",
+    "files.associations": {
+        "*.fp": "glsl",
+        "*.vp": "glsl",
+        "fluidsynth.h": "c",
+        "stdint.h": "c"
+    }
+}
