@@ -147,7 +147,7 @@ struct _fluid_synth_t
   atomic_float reverb_width;                /**< Shadow of reverb width */
   atomic_float reverb_level;                /**< Shadow of reverb level */
 
-  int chorus_nr;                     /**< Shadow of chorus number */
+  atomic_int chorus_nr;                     /**< Shadow of chorus number */
   atomic_float chorus_level;                /**< Shadow of chorus level */
   atomic_float chorus_speed;                /**< Shadow of chorus speed */
   atomic_float chorus_depth;                /**< Shadow of chorus depth */
