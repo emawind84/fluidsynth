@@ -3974,7 +3974,7 @@ fluid_synth_set_chorus_full(fluid_synth_t* synth, int set, int nr, double level,
   fluid_synth_api_enter(synth);
 
   if (set & FLUID_CHORUS_SET_NR)
-    synth->chorus_nr = nr;
+    fluid_atomic_int_set (&synth->chorus_nr, nr);
 
   if (set & FLUID_CHORUS_SET_LEVEL)
     fluid_atomic_float_set (&synth->chorus_level, level);
@@ -4004,10 +4004,12 @@ fluid_synth_set_chorus_full(fluid_synth_t* synth, int set, int nr, double level,
 int
 fluid_synth_get_chorus_nr(fluid_synth_t* synth)
 {
+  double result;
   fluid_return_val_if_fail (synth != NULL, 0.0);
   fluid_synth_api_enter(synth);
 
-  FLUID_API_RETURN(synth->chorus_nr);
+  result = fluid_atomic_int_get (&synth->chorus_nr);
+  FLUID_API_RETURN(result);
 }
 
 /**
@@ -4066,10 +4068,12 @@ fluid_synth_get_chorus_depth_ms(fluid_synth_t* synth)
 int
 fluid_synth_get_chorus_type(fluid_synth_t* synth)
 {
+  double result;
   fluid_return_val_if_fail (synth != NULL, 0.0);
   fluid_synth_api_enter(synth);
 
-  FLUID_API_RETURN(fluid_atomic_int_get(&synth->chorus_type));
+  result = fluid_atomic_int_get (&synth->chorus_type);
+  FLUID_API_RETURN(result);
 }
 
 /*
