@@ -26,10 +26,6 @@
 /* Todo: Get rid of that 'include' */
 #include "fluid_sys.h"
 
-#if LIBSNDFILE_SUPPORT
-#include <sndfile.h>
-#endif
-
 #define STMT_START do {
 #define STMT_END                                                               \
   }                                                                            \
@@ -48,6 +44,9 @@
 
 #define FLUID_INT_TO_POINTER(val) ((void*) (((char*) 0) + (val)))
 
+#if LIBSNDFILE_SUPPORT
+#include <sndfile.h>
+#endif
 
 /***************************************************************
  *
@@ -1934,7 +1933,7 @@ fluid_sample_import_sfont(fluid_sample_t* sample, SFSample* sfsample, fluid_defs
     int inv_loop = FALSE;
 
     // initialize file position indicator and SF_INFO structure
-    g_assert(sample->userdata == NULL);
+    // g_assert(sample->userdata == NULL);
     memset(&sfinfo, 0, sizeof(sfinfo));
 
     // open sample as a virtual file in memory

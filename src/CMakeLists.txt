@@ -22,18 +22,13 @@
 include_directories (
     ${CMAKE_BINARY_DIR}
     ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/src/drivers
     ${CMAKE_SOURCE_DIR}/src/synth
     ${CMAKE_SOURCE_DIR}/src/rvoice
     ${CMAKE_SOURCE_DIR}/src/midi
     ${CMAKE_SOURCE_DIR}/src/utils
     ${CMAKE_SOURCE_DIR}/src/sfloader
-    ${CMAKE_SOURCE_DIR}/src/bindings
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_BINARY_DIR}/include
-    ${PTHREADS_INCLUDE_DIR}
-    ${GLIB_INCLUDEDIR}
-    ${GLIB_INCLUDE_DIRS}
 )
 
 # ************ library ************
@@ -42,70 +37,9 @@ if ( READLINE_SUPPORT )
   include_directories ( ${READLINE_INCLUDE_DIR} )
 endif ( READLINE_SUPPORT )
 
-if ( PULSE_SUPPORT )
-  set ( fluid_pulse_SOURCES drivers/fluid_pulse.c )
-  include_directories ( ${PULSE_INCLUDEDIR} ${PULSE_INCLUDE_DIRS} )
-endif ( PULSE_SUPPORT )
-
-if ( ALSA_SUPPORT )
-  set ( fluid_alsa_SOURCES drivers/fluid_alsa.c )
-  include_directories ( ${ALSA_INCLUDEDIR} ${ALSA_INCLUDE_DIRS} )
-endif ( ALSA_SUPPORT )
-
-if ( COREAUDIO_SUPPORT )
-  set ( fluid_coreaudio_SOURCES drivers/fluid_coreaudio.c )
-endif ( COREAUDIO_SUPPORT )
-
-if ( COREMIDI_SUPPORT )
-  set ( fluid_coremidi_SOURCES drivers/fluid_coremidi.c )
-endif ( COREMIDI_SUPPORT )
-
-if ( DBUS_SUPPORT )
-  set ( fluid_dbus_SOURCES bindings/fluid_rtkit.c bindings/fluid_rtkit.h )
-  include_directories ( ${DBUS_INCLUDEDIR} ${DBUS_INCLUDE_DIRS} )
-endif ( DBUS_SUPPORT )
-
-if ( JACK_SUPPORT )
-  set ( fluid_jack_SOURCES drivers/fluid_jack.c )
-  include_directories ( ${JACK_INCLUDEDIR} ${JACK_INCLUDE_DIRS} )
-endif ( JACK_SUPPORT )
-
-if ( PORTAUDIO_SUPPORT )
-  set ( fluid_portaudio_SOURCES drivers/fluid_portaudio.c )
-  include_directories ( ${PORTAUDIO_INCLUDEDIR} ${PORTAUDIO_INCLUDE_DIRS} )
-endif ( PORTAUDIO_SUPPORT )
-
-if ( WINDOWS_SUPPORT )
-  set ( fluid_windows_SOURCES fluid_dll.c drivers/fluid_dsound.c drivers/fluid_winmidi.c )
-endif ( WINDOWS_SUPPORT )
-
-if ( OSS_SUPPORT )
-  set ( fluid_oss_SOURCES drivers/fluid_oss.c )
-endif ( OSS_SUPPORT )
-
-if ( LASH_SUPPORT OR LADCCA_SUPPORT )
-  set ( fluid_lash_SOURCES bindings/fluid_lash.c bindings/fluid_lash.h )
-  include_directories ( ${LASH_INCLUDEDIR} ${LADCCA_INCLUDEDIR}
-                        ${LASH_INCLUDE_DIRS} ${LADCCA_INCLUDE_DIRS} )
-endif ( LASH_SUPPORT OR LADCCA_SUPPORT )
-
-if ( DART_SUPPORT )
-  set ( fluid_dart_SOURCES drivers/fluid_dart.c )
-  include_directories ( ${DART_INCLUDE_DIRS} )
-endif ( DART_SUPPORT )
-
 if ( LIBSNDFILE_SUPPORT )
   include_directories ( ${LIBSNDFILE_INCLUDEDIR} ${LIBSNDFILE_INCLUDE_DIRS} )
 endif ( LIBSNDFILE_SUPPORT )
-
-if ( LADSPA_SUPPORT )
-  set ( fluid_ladspa_SOURCES bindings/fluid_ladspa.c bindings/fluid_ladspa.h )
-endif ( LADSPA_SUPPORT )
-
-if ( MIDISHARE_SUPPORT )
-  set ( fluid_midishare_SOURCES drivers/fluid_midishare.c )
-  include_directories ( ${MidiShare_INCLUDE_DIRS} )
-endif ( MIDISHARE_SUPPORT )
 
 set ( config_SOURCES ${CMAKE_BINARY_DIR}/config.h )
 if ( MSVC )
@@ -171,14 +105,6 @@ set ( libfluidsynth_SOURCES
     midi/fluid_midi_router.h
     midi/fluid_seqbind.c
     midi/fluid_seq.c
-    drivers/fluid_adriver.c
-    drivers/fluid_adriver.h
-    drivers/fluid_mdriver.c
-    drivers/fluid_mdriver.h
-    drivers/fluid_aufile.c
-    bindings/fluid_cmd.c
-    bindings/fluid_cmd.h
-    bindings/fluid_filerenderer.c
 )
 
 set ( public_HEADERS
@@ -206,8 +132,6 @@ set ( public_main_HEADER
 )
 
 link_directories (
-    ${GLIB_LIBDIR}
-    ${GLIB_LIBRARY_DIRS}
     ${LASH_LIBDIR}
     ${LASH_LIBRARY_DIRS}
     ${LADCCA_LIBDIR}
@@ -287,7 +211,6 @@ if ( LIBFLUID_CPPFLAGS )
 endif ( LIBFLUID_CPPFLAGS )
 
 target_link_libraries ( libfluidsynth
-    ${GLIB_LIBRARIES}
     ${LASH_LIBRARIES}
     ${LADCCA_LIBRARIES}
     ${JACK_LIBRARIES}
